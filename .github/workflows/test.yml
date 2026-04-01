@@ -1,66 +1,132 @@
 name: CI/CD Pipeline
 
 on:
+  push:
+    branches: [main]
   pull_request:
-    branches:
-      - "**"
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: my-app
+  CONTAINER_NAME: my-app-container
+  APP_PORT: 8080
 
 jobs:
-  build:
-    runs-on: ubuntu-latest   # ✅ self-hosted로 변경
+  # ─────────────────────────────────────────────
+  # Job 1: Docker 빌드 → 실행 → Cypress E2E 테스트
+  # ─────────────────────────────────────────────
+  build-and-test:
+    runs-on: self-hosted
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # 1. Docker Buildx
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      # pom.xml이 src/main/frontend를 참조하지만 실제 소스는 src/main/view에 존재
+      # Docker 빌드 전 심볼릭 링크로 경로 연결
+      - name: Fix frontend directory mapping
+        run: |
+          if [ ! -e src/main/frontend ]; then
+            ln -s ${{ github.workspace }}/src/main/view ${{ github.workspace }}/src/main/frontend
+          fi
 
-    # 2. Docker 이미지 빌드
-    - name: Build Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        file: ./Dockerfile
-        push: false
-        tags: my-app:latest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    # 3. 컨테이너 실행
-    - name: Run Docker container
-      run: |
-        docker run -d -p 3000:3000 --name my-app-container my-app:latest
+      - name: Build Docker image
+        run: docker build -t $IMAGE_NAME:latest .
 
-    - name: Wait for server (health check)
-      run: |
-        echo "Waiting for app to start..."
-        until curl -s http://localhost:3000; do
-          echo "Still waiting..."
-          sleep 3
-        done
-        echo "App is ready!"
+      - name: Run Docker container
+        run: docker run -d -p $APP_PORT:8080 --name $CONTAINER_NAME $IMAGE_NAME:latest
 
-    # 4. Cypress 실행 (컨테이너 내부)
-    - name: Run Cypress tests
-      run: |
-        docker exec my-app-container sh -c "
-          npm install &&
-          npm install cypress --save-dev &&
-          npx cypress run
-        "
+      - name: Wait for app (health check)
+        run: |
+          echo "Waiting for app to start..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:$APP_PORT > /dev/null 2>&1; then
+              echo "App is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30 — retrying in 3s..."
+            sleep 3
+          done
+          echo "App failed to start within 90s"
+          exit 1
 
-    # 5. 로그 확인 (디버깅용)
-    - name: Check logs
-      if: always()
-      run: |
-        docker logs my-app-container
+      - name: Install Node dependencies
+        working-directory: src/main/view
+        run: npm ci
 
-    # 6. 정리
-    - name: Cleanup
-      if: always()
-      run: |
-        docker stop my-app-container
-        docker rm my-app-container
-    - name: Debug file structure
-      run: |
-        ls -R
+      - name: Run Cypress E2E tests
+        working-directory: src/main/view
+        run: npx cypress run --config baseUrl=http://localhost:$APP_PORT
+
+      - name: Upload Cypress screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: src/main/view/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Show container logs (on failure)
+        if: failure()
+        run: docker logs $CONTAINER_NAME
+
+      - name: Cleanup container
+        if: always()
+        run: |
+          docker stop $CONTAINER_NAME || true
+          docker rm $CONTAINER_NAME || true
+
+  # ─────────────────────────────────────────────
+  # Job 2: Tomcat 9 배포 (main 브랜치 push 시에만)
+  # ─────────────────────────────────────────────
+  deploy:
+    needs: build-and-test
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fix frontend directory mapping
+        run: |
+          if [ ! -e src/main/frontend ]; then
+            ln -s ${{ github.workspace }}/src/main/view ${{ github.workspace }}/src/main/frontend
+          fi
+
+      - name: Build WAR with Maven
+        run: mvn clean package -DskipTests -q
+
+      - name: Deploy to Tomcat 9
+        env:
+          # Repository Variables에서 설정: Settings > Variables > Actions
+          # TOMCAT_HOME 예시: /opt/tomcat9  또는  C:/tomcat9
+          TOMCAT_HOME: ${{ vars.TOMCAT_HOME }}
+        run: |
+          echo "Stopping Tomcat..."
+          $TOMCAT_HOME/bin/shutdown.sh || true
+          sleep 5
+
+          echo "Removing old deployment..."
+          rm -rf $TOMCAT_HOME/webapps/ROOT $TOMCAT_HOME/webapps/ROOT.war
+
+          echo "Deploying WAR..."
+          cp target/demo-0.0.1-SNAPSHOT.war $TOMCAT_HOME/webapps/ROOT.war
+
+          echo "Starting Tomcat..."
+          $TOMCAT_HOME/bin/startup.sh
+
+          echo "Waiting for Tomcat to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:8080 > /dev/null 2>&1; then
+              echo "Deploy successful!"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Tomcat failed to start"
+          exit 1

@@ -59,7 +59,7 @@
 				<artifactId>frontend-maven-plugin</artifactId>
 				<version>1.9.1</version>
 				<configuration>
-					<workingDirectory>src/main/frontend</workingDirectory> <!-- 프론트엔드 작업 디렉토리 -->
+					<workingDirectory>src/main/view</workingDirectory> <!-- 프론트엔드 작업 디렉토리 -->
 					<installDirectory>src/main/target</installDirectory> <!-- 설치 디렉토리 -->
 				</configuration>
 				<!-- 플러그인 실행 설정 -->
@@ -105,7 +105,7 @@
 								<!-- 타겟 설정 -->
 								<mkdir dir="${project.build.directory}/classes/public" /> <!-- 디렉토리 생성 -->
 								<copy todir="${project.build.directory}/classes/public"> <!-- 디렉토리 복사 -->
-									<fileset dir="${project.basedir}/src/main/frontend/build" /> <!-- 프론트엔드 빌드 디렉토리 -->
+									<fileset dir="${project.basedir}/src/main/view/build" /> <!-- 프론트엔드 빌드 디렉토리 -->
 								</copy>
 							</target>
 						</configuration>
