@@ -1,4 +1,4 @@
-# Stage 1: Build (Maven이 백엔드 + 프론트엔드 통합 빌드)
+# Stage 1: Maven 빌드 (프론트엔드 + 백엔드 통합)
 FROM maven:3.9-eclipse-temurin-17 AS builder
 WORKDIR /app
 
@@ -6,13 +6,11 @@ WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline -q || true
 
-# 소스 복사 (.dockerignore로 node_modules/target 제외)
+# 소스 복사 (node_modules, target은 .dockerignore로 제외)
 COPY src ./src
 
-# pom.xml은 src/main/frontend를 참조하지만 실제 React 앱은 src/main/view에 존재
-# 심볼릭 링크로 경로 불일치 해결
-RUN ln -s /app/src/main/view /app/src/main/frontend
-
+# frontend-maven-plugin: Node 다운로드 → npm install → npm run build (src/main/view)
+# maven-antrun-plugin: src/main/view/build → target/classes/public 복사
 RUN mvn clean package -DskipTests -q
 
 # Stage 2: 경량 JRE로 실행 (Spring Boot 실행 가능 WAR)
