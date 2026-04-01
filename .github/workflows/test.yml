@@ -1,7 +1,7 @@
 name: CI/CD Pipline
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "prtest" ]
 jobs:
   build:
     runs-on: ubuntu-latest
