@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted   # ✅ self-hosted로 변경
+    runs-on: ubuntu-latest   # ✅ self-hosted로 변경
 
     steps:
     - name: Checkout code
