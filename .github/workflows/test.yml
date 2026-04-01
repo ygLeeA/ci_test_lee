@@ -51,13 +51,14 @@ jobs:
         working-directory: src/main/view
         run: npx cypress run --config baseUrl=http://localhost:${{ env.APP_PORT }}
 
-      - name: Upload Cypress screenshots (on failure)
+      - name: Upload Cypress screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: cypress-screenshots
           path: src/main/view/cypress/screenshots
           if-no-files-found: ignore
+          retention-days: 7
 
       - name: Show container logs (on failure)
         if: failure()
