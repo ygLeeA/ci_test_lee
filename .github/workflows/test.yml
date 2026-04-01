@@ -2,7 +2,8 @@ name: CI/CD Pipeline
 
 on:
   pull_request:
-    branches: [ "prtest3" ]
+    branches:
+      - "**"
 
 jobs:
   build:
