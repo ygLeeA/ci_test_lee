@@ -1,30 +1,65 @@
-name: CI/CD Pipline
+name: CI/CD Pipeline
+
 on:
-  push:
+  pull_request:
     branches: [ "prtest" ]
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted   # ✅ self-hosted로 변경
+
     steps:
-    - uses: actions/checkout@v3
-    - name: Run a script
-      run: echo "Hello, GitHub Actions!"
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 1. Docker Buildx
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
+    # 2. Docker 이미지 빌드
     - name: Build Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
-        file: ./Dockerfile
-        push: false # PR에서는 보통 빌드/테스트만 수행
+        file: ./src/Dockerfile
+        push: false
         tags: my-app:latest
 
+    # 3. 컨테이너 실행
     - name: Run Docker container
       run: |
-        docker run -d --name my-app-container my-app:latest
-        # 테스트 명령 수행 (예: curl로 서버 동작 확인)
-        sleep 10
-        docker ps
+        docker run -d -p 3000:3000 --name my-app-container my-app:latest
+
+    - name: Wait for server (health check)
+      run: |
+        echo "Waiting for app to start..."
+        until curl -s http://localhost:3000; do
+          echo "Still waiting..."
+          sleep 3
+        done
+        echo "App is ready!"
+
+    # 4. Cypress 실행 (컨테이너 내부)
+    - name: Run Cypress tests
+      run: |
+        docker exec my-app-container sh -c "
+          npm install &&
+          npm install cypress --save-dev &&
+          npx cypress run
+        "
+
+    # 5. 로그 확인 (디버깅용)
+    - name: Check logs
+      if: always()
+      run: |
         docker logs my-app-container
-      # 테스트 할 내용 추가
+
+    # 6. 정리
+    - name: Cleanup
+      if: always()
+      run: |
+        docker stop my-app-container
+        docker rm my-app-container
+    - name: Debug file structure
+      run: |
+        ls -R
