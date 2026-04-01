@@ -9,3 +9,22 @@ jobs:
     - uses: actions/checkout@v3
     - name: Run a script
       run: echo "Hello, GitHub Actions!"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false # PR에서는 보통 빌드/테스트만 수행
+        tags: my-app:latest
+
+    - name: Run Docker container
+      run: |
+        docker run -d --name my-app-container my-app:latest
+        # 테스트 명령 수행 (예: curl로 서버 동작 확인)
+        sleep 10
+        docker ps
+        docker logs my-app-container
+      # 테스트 할 내용 추가
