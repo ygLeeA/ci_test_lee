@@ -60,3 +60,6 @@ jobs:
       run: |
         docker stop my-app-container
         docker rm my-app-container
+    - name: Debug file structure
+      run: |
+        ls -R
